@@ -67,14 +67,18 @@ sudo install -m 0755 /tmp/hysteria /usr/local/bin/hysteria
 
 echo "=== [6/9] Installing AnyTLS ==="
 case "$ARCH" in
-  x86_64)  AT_PKG="anytls_linux_amd64.zip" ;;
-  aarch64) AT_PKG="anytls_linux_arm64.zip" ;;
+  x86_64)  AT_ARCH="amd64" ;;
+  aarch64) AT_ARCH="arm64" ;;
 esac
+# AnyTLS 文件名带版本号，需要动态获取最新 tag
+AT_VER="$(curl -fsSL https://api.github.com/repos/anytls/anytls-go/releases/latest | grep '"tag_name"' | head -1 | cut -d'"' -f4 | sed 's/^v//')"
+[ -n "$AT_VER" ] || { echo "Failed to fetch anytls latest version"; exit 1; }
 curl -fsSL -o /tmp/anytls.zip \
-  "https://github.com/anytls/anytls-go/releases/latest/download/${AT_PKG}"
+  "https://github.com/anytls/anytls-go/releases/download/v${AT_VER}/anytls_${AT_VER}_linux_${AT_ARCH}.zip"
+sudo rm -rf /tmp/anytls-extract
 sudo unzip -oq /tmp/anytls.zip -d /tmp/anytls-extract
 sudo install -m 0755 /tmp/anytls-extract/anytls-server /usr/local/bin/anytls-server
-/usr/local/bin/anytls-server -h 2>&1 | head -3 || true
+echo "anytls-server v${AT_VER} installed"
 
 echo "=== [7/9] Generating Reality keypair ==="
 KEYS="$(/usr/local/bin/xray x25519)"
