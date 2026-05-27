@@ -126,7 +126,7 @@ proxy-groups:
 
   - name: "⚡ Auto"
     type: url-test
-    url: https://cp.cloudflare.com/generate_204
+    url: https://www.gstatic.com/generate_204
     interval: 300
     tolerance: 50
     proxies:
