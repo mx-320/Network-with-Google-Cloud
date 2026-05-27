@@ -57,6 +57,32 @@ geodata-mode: true
 find-process-mode: strict
 global-client-fingerprint: chrome
 
+sniffer:
+  enable: true
+  override-destination: true
+  sniff:
+    - tls
+    - http
+
+skip-proxy:
+  - 127.0.0.1
+  - 192.168.0.0/16
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 100.64.0.0/10
+  - localhost
+  - "*.local"
+  - captive.apple.com
+
+tun:
+  enable: true
+  stack: system
+  mtu: 1280
+  auto-route: true
+  auto-detect-interface: true
+  dns-hijack:
+    - "any:53"
+
 dns:
   enable: true
   listen: 127.0.0.1:1053
@@ -65,6 +91,15 @@ dns:
   fake-ip-filter:
     - "*.lan"
     - "*.local"
+    - "*.apple.com"
+    - "*.apple"
+    - "app-analytics-services.com"
+    - "time.*.com"
+    - "ntp.*.com"
+    - "*.ntp.org"
+    - "stun.*"
+    - "+.msftconnecttest.com"
+    - "+.msftncsi.com"
     - "localhost.ptlogin2.qq.com"
   nameserver:
     - https://223.5.5.5/dns-query
@@ -126,15 +161,16 @@ proxy-groups:
 
   - name: "⚡ Auto"
     type: url-test
+    lazy: true
     url: https://www.gstatic.com/generate_204
-    interval: 300
-    tolerance: 50
+    interval: 600
+    tolerance: 150
     proxies:
       - "US-Reality"
       - "US-HY2"
       - "US-AnyTLS"
 
-  - name: "🤖 AI"
+  - name: "🧠 Anti-Restrict"
     type: select
     proxies:
       - "US-Reality"
@@ -175,34 +211,67 @@ rules:
   - IP-CIDR6,fc00::/7,DIRECT,no-resolve
   - IP-CIDR6,fe80::/10,DIRECT,no-resolve
 
-  # --- AI services (primary use case) ---
-  - DOMAIN-SUFFIX,openai.com,🤖 AI
-  - DOMAIN-SUFFIX,chatgpt.com,🤖 AI
-  - DOMAIN-SUFFIX,oaistatic.com,🤖 AI
-  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 AI
-  - DOMAIN-KEYWORD,openai,🤖 AI
-  - DOMAIN-SUFFIX,anthropic.com,🤖 AI
-  - DOMAIN-SUFFIX,claude.ai,🤖 AI
-  - DOMAIN-SUFFIX,claudeusercontent.com,🤖 AI
-  - DOMAIN-SUFFIX,gemini.google.com,🤖 AI
-  - DOMAIN-SUFFIX,bard.google.com,🤖 AI
-  - DOMAIN-SUFFIX,makersuite.google.com,🤖 AI
-  - DOMAIN-SUFFIX,aistudio.google.com,🤖 AI
-  - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI
-  - DOMAIN-SUFFIX,perplexity.ai,🤖 AI
-  - DOMAIN-SUFFIX,pplx.ai,🤖 AI
-  - DOMAIN-SUFFIX,x.ai,🤖 AI
-  - DOMAIN-SUFFIX,grok.com,🤖 AI
-  - DOMAIN-SUFFIX,mistral.ai,🤖 AI
-  - DOMAIN-SUFFIX,huggingface.co,🤖 AI
-  - DOMAIN-SUFFIX,character.ai,🤖 AI
-  - DOMAIN-SUFFIX,poe.com,🤖 AI
-  - DOMAIN-SUFFIX,cohere.ai,🤖 AI
-  - DOMAIN-SUFFIX,cohere.com,🤖 AI
-  - DOMAIN-SUFFIX,stability.ai,🤖 AI
-  - DOMAIN-SUFFIX,replicate.com,🤖 AI
-  - DOMAIN-SUFFIX,runwayml.com,🤖 AI
-  - DOMAIN-SUFFIX,midjourney.com,🤖 AI
+  # --- Work / CN business platforms: DIRECT ---
+  - DOMAIN-SUFFIX,e.kuaishou.com,DIRECT
+  - DOMAIN-SUFFIX,business.oceanengine.com,DIRECT
+  - DOMAIN-SUFFIX,cas.baidu.com,DIRECT
+  - DOMAIN-SUFFIX,e.qq.com,DIRECT
+  - DOMAIN-SUFFIX,oceanengine.com,DIRECT
+  - DOMAIN-SUFFIX,kylin.baidu.com,DIRECT
+
+  # --- Anti-restrict services ---
+  - DOMAIN-SUFFIX,openai.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,chatgpt.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,oaistatic.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,oaiusercontent.com,🧠 Anti-Restrict
+  - DOMAIN-KEYWORD,openai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,anthropic.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,claude.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,claudeusercontent.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,dify.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,coze.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,gemini.google.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,bard.google.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,makersuite.google.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,aistudio.google.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,perplexity.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,pplx.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,x.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,grok.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,mistral.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,huggingface.co,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,character.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,poe.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,cohere.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,cohere.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,stability.ai,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,replicate.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,runwayml.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,midjourney.com,🧠 Anti-Restrict
+
+  # --- Ads / attribution / business dashboards ---
+  - DOMAIN-SUFFIX,ads.google.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,adwords.google.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,analytics.google.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,googletagmanager.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,googleadservices.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,googlesyndication.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,googletagservices.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,ads.tiktok.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,business.tiktok.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,tradingview.com,🧠 Anti-Restrict
+  - DOMAIN,dash.applovin.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,applovin.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,applvn.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,applovinedge.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,appsflyer.com,🧠 Anti-Restrict
+  - DOMAIN,suite.adjust.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,adjust.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,adj.st,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,kochava.com,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,branch.io,🧠 Anti-Restrict
+  - DOMAIN-SUFFIX,singular.net,🧠 Anti-Restrict
 
   # --- Streaming (DIRECT — GCP IPs usually blocked) ---
   - DOMAIN-SUFFIX,netflix.com,🇨🇳 Direct-CN
