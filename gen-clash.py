@@ -33,6 +33,11 @@ env = {}
 env.update(load_kv(HERE / "deploy.conf"))
 env.update(load_kv(HERE / ".secrets.env"))
 
+# Rule providers are downloaded before routing is fully available on some clients.
+# Use CDN mirrors by default so first-run imports work on restrictive networks.
+env.setdefault("META_RULE_BASE", "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta")
+env.setdefault("BM7_RULE_BASE", "https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master")
+
 REQUIRED = [
     "STATIC_IP",
     "REALITY_PORT", "REALITY_SNI", "REALITY_PUBLIC", "REALITY_SHORTID",
@@ -250,7 +255,7 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/category-ai-%21cn.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/category-ai-%21cn.mrs"
     path: ./ruleset/meta_ai.mrs
     interval: 86400
 
@@ -258,7 +263,7 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/google.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/google.mrs"
     path: ./ruleset/meta_google.mrs
     interval: 86400
 
@@ -267,7 +272,7 @@ rule-providers:
     type: http
     behavior: classical
     format: yaml
-    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/Siri/Siri.yaml"
+    url: "{BM7_RULE_BASE}/rule/Clash/Siri/Siri.yaml"
     path: ./ruleset/bm7_siri.yaml
     interval: 86400
 
@@ -275,7 +280,7 @@ rule-providers:
     type: http
     behavior: classical
     format: yaml
-    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/iCloudPrivateRelay/iCloudPrivateRelay.yaml"
+    url: "{BM7_RULE_BASE}/rule/Clash/iCloudPrivateRelay/iCloudPrivateRelay.yaml"
     path: ./ruleset/bm7_icloud_private_relay.yaml
     interval: 86400
 
@@ -284,7 +289,7 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/icloud.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/icloud.mrs"
     path: ./ruleset/meta_icloud.mrs
     interval: 86400
 
@@ -292,7 +297,7 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/apple-cn.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/apple-cn.mrs"
     path: ./ruleset/meta_apple_cn.mrs
     interval: 86400
 
@@ -301,7 +306,7 @@ rule-providers:
     type: http
     behavior: classical
     format: yaml
-    url: "https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/AdvertisingLite/AdvertisingLite.yaml"
+    url: "{BM7_RULE_BASE}/rule/Clash/AdvertisingLite/AdvertisingLite.yaml"
     path: ./ruleset/bm7_ads_lite.yaml
     interval: 86400
 
@@ -310,7 +315,7 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/private.mrs"
     path: ./ruleset/meta_private.mrs
     interval: 86400
 
@@ -318,7 +323,7 @@ rule-providers:
     type: http
     behavior: ipcidr
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/private.mrs"
+    url: "{META_RULE_BASE}/geo/geoip/private.mrs"
     path: ./ruleset/meta_private_ip.mrs
     interval: 86400
 
@@ -326,7 +331,7 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/cn.mrs"
     path: ./ruleset/meta_cn.mrs
     interval: 86400
 
@@ -334,7 +339,7 @@ rule-providers:
     type: http
     behavior: ipcidr
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"
+    url: "{META_RULE_BASE}/geo/geoip/cn.mrs"
     path: ./ruleset/meta_cn_ip.mrs
     interval: 86400
 
@@ -343,7 +348,7 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/telegram.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/telegram.mrs"
     path: ./ruleset/meta_telegram.mrs
     interval: 86400
 
@@ -351,7 +356,7 @@ rule-providers:
     type: http
     behavior: ipcidr
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/telegram.mrs"
+    url: "{META_RULE_BASE}/geo/geoip/telegram.mrs"
     path: ./ruleset/meta_telegram_ip.mrs
     interval: 86400
 
@@ -359,12 +364,13 @@ rule-providers:
     type: http
     behavior: domain
     format: mrs
-    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/tiktok.mrs"
+    url: "{META_RULE_BASE}/geo/geosite/tiktok.mrs"
     path: ./ruleset/meta_tiktok.mrs
     interval: 86400
 
 rules:
-  # --- [P0] 规则更新 / GitHub raw 走代理，避免大陆网络下规则集刷新失败 ---
+  # --- [P0] 规则更新源走代理；首次导入默认使用 CDN 镜像降低 raw 超时概率 ---
+  - DOMAIN-SUFFIX,cdn.jsdelivr.net,🌐 代理流量
   - DOMAIN-SUFFIX,raw.githubusercontent.com,🌐 代理流量
 
   # --- [P1] AI / Google 服务优先走代理，避免被国内/Apple/广告规则抢先命中 ---

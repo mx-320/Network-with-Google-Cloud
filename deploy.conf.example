@@ -24,6 +24,13 @@ ANYTLS_PORT=
 # 要生成客户端配置的设备名（空格分隔，可自由增删）
 DEVICES="mac iphone ipad laptop spare"
 
+# 规则集镜像。默认用 jsDelivr，避免客户端首次导入时 raw.githubusercontent.com 超时。
+# 如需切回 GitHub raw，可改为：
+# META_RULE_BASE=https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta
+# BM7_RULE_BASE=https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master
+META_RULE_BASE=https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta
+BM7_RULE_BASE=https://cdn.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master
+
 # ── Cloudflare CDN 套娃出口（可选）──
 # 开启后多一条出口：客户端 → Cloudflare 边缘 → Cloudflare Tunnel → cloudflared@VM
 # → xray VLESS+WS(127.0.0.1:8080) → 直出。客户端只与 Cloudflare anycast IP 通信，
