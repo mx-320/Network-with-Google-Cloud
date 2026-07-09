@@ -195,8 +195,8 @@ proxy-groups:
   - name: "🚀 代理策略"
     type: select
     proxies:
-      - "US-HY2"
       - "US-Reality"
+      - "US-HY2"
       - "⚡ 自动测速"
       - "🔧 手动选择"{CDN_REF}
       - "US-AnyTLS"
