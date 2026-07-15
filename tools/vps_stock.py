@@ -23,6 +23,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from xml.etree import ElementTree
 
 
 def _external_command_env() -> Dict[str, str]:
@@ -889,6 +890,50 @@ def _reddit_http_search(provider: Dict[str, Any], timeout: int) -> List[Dict[str
     return [child.get("data", {}) for child in children if isinstance(child, dict)]
 
 
+def _reddit_rss_search(provider: Dict[str, Any], timeout: int) -> List[Dict[str, Any]]:
+    query = urlencode(
+        {
+            "q": provider["reddit_query"],
+            "sort": "new",
+            "t": "month",
+            "limit": "30",
+        }
+    )
+    status_code, text = fetch("https://www.reddit.com/search.rss?%s" % query, timeout=timeout)
+    if status_code >= 400:
+        raise RuntimeError("HTTP %s" % status_code)
+    try:
+        root = ElementTree.fromstring(text)
+    except ElementTree.ParseError as exc:
+        raise ValueError("Reddit RSS returned invalid XML") from exc
+
+    atom = "{http://www.w3.org/2005/Atom}"
+    posts = []
+    for entry in root.findall("%sentry" % atom):
+        raw_id = entry.findtext("%sid" % atom, default="")
+        if not raw_id.startswith("t3_"):
+            continue
+        updated = entry.findtext("%supdated" % atom, default="")
+        try:
+            created_utc = datetime.fromisoformat(updated.replace("Z", "+00:00")).timestamp()
+        except (TypeError, ValueError):
+            continue
+        link = entry.find("%slink" % atom)
+        author = entry.find("%sauthor" % atom)
+        content = entry.findtext("%scontent" % atom, default="")
+        posts.append(
+            {
+                "id": raw_id[3:],
+                "title": entry.findtext("%stitle" % atom, default=""),
+                "selftext": re.sub(r"<[^>]+>", " ", unescape(content)),
+                "author": author.findtext("%sname" % atom, default="") if author is not None else "",
+                "created_utc": created_utc,
+                "url": link.get("href", "") if link is not None else "",
+            }
+        )
+    return posts
+
+
 def _reddit_search_posts(provider: Dict[str, Any], timeout: int) -> List[Dict[str, Any]]:
     command = [
         "opencli",
@@ -931,7 +976,14 @@ def _reddit_search_posts(provider: Dict[str, Any], timeout: int) -> List[Dict[st
         try:
             posts = _reddit_http_search(provider, timeout)
         except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            raise RuntimeError("Reddit check failed: %s; public JSON fallback failed: %s" % (failure_reason, exc)) from exc
+            json_failure_reason = str(exc)
+            try:
+                posts = _reddit_rss_search(provider, timeout)
+            except (OSError, RuntimeError, ValueError, TypeError) as rss_exc:
+                raise RuntimeError(
+                    "Reddit check failed: %s; public JSON fallback failed: %s; RSS fallback failed: %s"
+                    % (failure_reason, json_failure_reason, rss_exc)
+                ) from rss_exc
     return posts
 
 

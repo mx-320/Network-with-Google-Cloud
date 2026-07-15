@@ -352,6 +352,7 @@ class VpsStockParsingTests(unittest.TestCase):
     def test_reddit_check_reports_recent_restock_lead(self, run):
         run.return_value.returncode = 0
         run.return_value.stderr = ""
+        recent_timestamp = time.time() - 3600
         run.return_value.stdout = json.dumps(
             [
                 {
@@ -359,7 +360,7 @@ class VpsStockParsingTests(unittest.TestCase):
                     "title": "RackNerd VPS restock is live",
                     "selftext": "Limited sale inventory is available.",
                     "author": "vps_user",
-                    "created_utc": 1783860000,
+                    "created_utc": recent_timestamp,
                     "url": "https://www.reddit.com/r/example/comments/abc",
                 },
                 {
@@ -367,7 +368,7 @@ class VpsStockParsingTests(unittest.TestCase):
                     "title": "RackNerd stock sold out",
                     "selftext": "",
                     "author": "vps_user",
-                    "created_utc": 1783860000,
+                    "created_utc": recent_timestamp,
                     "url": "https://www.reddit.com/r/example/comments/def",
                 },
             ]
@@ -491,6 +492,43 @@ class VpsStockParsingTests(unittest.TestCase):
         self.assertEqual(result["status"], "lead")
         self.assertEqual([post["id"] for post in result["posts"]], ["reddit:fallback"])
         self.assertIn("search.json", fetch.call_args.args[0])
+
+    @patch("vps_stock.fetch")
+    @patch("vps_stock.subprocess.run")
+    def test_reddit_falls_back_to_atom_after_json_is_forbidden(self, run, fetch):
+        run.return_value.returncode = 1
+        run.return_value.stderr = "Detached while handling command"
+        run.return_value.stdout = ""
+        updated = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        atom = """
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <entry>
+            <author><name>vps_user</name></author>
+            <content type="html">&lt;div&gt;Limited sale inventory is available.&lt;/div&gt;</content>
+            <id>t3_atom-fallback</id>
+            <link href="https://www.reddit.com/r/example/comments/atom-fallback/" />
+            <updated>%s</updated>
+            <title>RackNerd VPS restock is live</title>
+          </entry>
+        </feed>
+        """ % updated
+        fetch.side_effect = [(403, "blocked"), (200, atom)]
+        provider = {
+            "id": "racknerd-reddit",
+            "provider": "RackNerd",
+            "region": "US",
+            "priority": "value",
+            "network": "community Reddit leads",
+            "url": "https://www.reddit.com/search/?q=RackNerd",
+            "reddit_query": "RackNerd",
+            "reddit_keywords": ["racknerd"],
+        }
+
+        result = check_reddit(provider)
+
+        self.assertEqual(result["status"], "lead")
+        self.assertEqual([post["id"] for post in result["posts"]], ["reddit:atom-fallback"])
+        self.assertIn("search.rss", fetch.call_args_list[1].args[0])
 
     @patch("vps_stock._append_memory_line")
     @patch("vps_stock.check_provider")
