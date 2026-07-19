@@ -33,6 +33,7 @@ from vps_stock import (  # noqa: E402
     dedupe_discovery_results,
     find_transitions,
     filter_discovery_posts,
+    _parse_twitter_posts,
     main,
     monitorability,
     prune_state_posts,
@@ -565,6 +566,62 @@ Out of Stock
         command = run.call_args.args[0]
         since = command[command.index("--since") + 1]
         self.assertEqual(since, (date.today() - timedelta(days=3)).isoformat())
+
+    @patch("vps_stock._run_twitter_opencli")
+    @patch("vps_stock.subprocess.run")
+    def test_twitter_check_falls_back_to_opencli_after_twitter_cli_error(self, run, opencli):
+        run.return_value.returncode = 1
+        run.return_value.stderr = "Twitter API error (HTTP 404)"
+        run.return_value.stdout = ""
+        opencli.return_value.returncode = 0
+        opencli.return_value.stderr = ""
+        opencli.return_value.stdout = json.dumps(
+            [
+                {
+                    "id": "789",
+                    "text": "DMIT 洛杉矶补货了。",
+                    "author": "vps_watcher",
+                    "created_at": "Fri Jul 17 06:36:38 +0000 2026",
+                }
+            ]
+        )
+        provider = {
+            "id": "dmit-x",
+            "provider": "DMIT",
+            "region": "US",
+            "priority": "cn2",
+            "network": "community X leads",
+            "url": "https://x.com/search?q=DMIT",
+            "twitter_query": "DMIT",
+            "twitter_keywords": ["dmit"],
+        }
+
+        result = check_twitter(provider, since="2026-07-15")
+
+        self.assertEqual(result["status"], "lead")
+        self.assertEqual(result["posts"][0]["id"], "x:789")
+        fallback_command = opencli.call_args.args[0]
+        self.assertIn("since:2026-07-15", fallback_command[3])
+
+    def test_opencli_legacy_timestamp_is_normalized_to_iso(self):
+        posts = _parse_twitter_posts(
+            json.dumps([{"id": "1", "text": "restock", "author": "w", "created_at": "Fri Jul 17 06:36:38 +0000 2026"}]),
+            source="opencli",
+        )
+        self.assertEqual(posts[0]["createdAtISO"], "2026-07-17T06:36:38+00:00")
+
+    def test_discovery_keeps_opencli_lead_carrying_a_legacy_timestamp(self):
+        now = 2_000_000_000
+        text = "NovaHost VPS restock: Los Angeles CN2 GIA $5/mo, 2GB RAM, 40GB NVMe, currently in stock."
+        posts = _parse_twitter_posts(
+            json.dumps([{"id": "np", "text": text, "author": "vps_user", "created_at": "Tue May 17 12:00:00 +0000 2033"}]),
+            source="opencli",
+        )
+
+        leads = filter_discovery_posts(posts, now=now, source="x")
+
+        self.assertEqual(len(leads), 1)
+        self.assertEqual(leads[0]["provider"], "NovaHost")
 
     @patch("vps_stock._run_reddit_opencli")
     def test_reddit_check_reports_recent_restock_lead(self, run):

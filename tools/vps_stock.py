@@ -1080,41 +1080,11 @@ def check_twitter(provider: Dict[str, Any], timeout: int = 20, since: Optional[s
     query = provider.get("twitter_query", "")
     if provider.get("twitter_from"):
         query = "from:%s %s" % (provider["twitter_from"], query)
-    command = [
-        "twitter",
-        "search",
-        "--type",
-        "latest",
-        "--since",
-        since,
-        "--max",
-        "30",
-        "--json",
-    ]
-    if query:
-        command.append(query)
     try:
-        completed = subprocess.run(
-            command,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-            env=_external_command_env(),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        tweets = _search_twitter(query, since, timeout)
+    except RuntimeError as exc:
         result["status"] = "unreachable"
         result["reason"] = "Twitter/X check failed: %s" % exc
-        return result
-    if completed.returncode != 0:
-        result["status"] = "unreachable"
-        result["reason"] = "Twitter/X check failed: %s" % completed.stderr.strip()
-        return result
-    try:
-        tweets = json.loads(completed.stdout).get("data", [])
-    except (ValueError, AttributeError):
-        result["status"] = "unknown"
-        result["reason"] = "Twitter/X returned an unreadable response"
         return result
 
     leads = []
@@ -1257,6 +1227,134 @@ def _run_reddit_opencli(command: List[str], timeout: float, env: Dict[str, str])
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
+def _run_twitter_opencli(command: List[str], timeout: float, env: Dict[str, str]) -> subprocess.CompletedProcess:
+    process = subprocess.Popen(
+        command,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        start_new_session=os.name != "nt",
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        _terminate_process_group(process)
+        raise RuntimeError("Twitter OpenCLI timed out after %.1fs" % timeout) from exc
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _twitter_timestamp_to_iso(value: Any) -> str:
+    """OpenCLI reports Twitter's legacy stamp; downstream filters only read ISO."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return text
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(text, "%a %b %d %H:%M:%S %z %Y").isoformat()
+    except ValueError:
+        return text
+
+
+def _parse_twitter_posts(stdout: str, source: str) -> List[Dict[str, Any]]:
+    payload = json.loads(stdout)
+    if isinstance(payload, dict):
+        if payload.get("ok") is False:
+            error = payload.get("error", {})
+            message = error.get("message", "Twitter returned an error") if isinstance(error, dict) else str(error)
+            raise ValueError(message)
+        posts = payload.get("data", [])
+    elif isinstance(payload, list):
+        posts = payload
+    else:
+        raise ValueError("Twitter response has no post list")
+    if not isinstance(posts, list):
+        raise ValueError("Twitter response has no post list")
+    if source != "opencli":
+        return posts
+
+    normalized = []
+    for post in posts:
+        if not isinstance(post, dict):
+            continue
+        author = post.get("author", "")
+        if isinstance(author, dict):
+            screen_name = author.get("screenName") or author.get("username") or author.get("screen_name") or ""
+        else:
+            screen_name = author
+        normalized.append(
+            {
+                "id": post.get("id", ""),
+                "text": post.get("text", ""),
+                "author": {"screenName": str(screen_name)},
+                "createdAtISO": _twitter_timestamp_to_iso(post.get("created_at", "")),
+            }
+        )
+    return normalized
+
+
+def _search_twitter(query: str, since: str, timeout: int) -> List[Dict[str, Any]]:
+    twitter_command = [
+        "twitter",
+        "search",
+        "--type",
+        "latest",
+        "--since",
+        since,
+        "--max",
+        "30",
+        "--json",
+    ]
+    if query:
+        twitter_command.append(query)
+
+    twitter_failure = ""
+    try:
+        completed = subprocess.run(
+            twitter_command,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            env=_external_command_env(),
+        )
+        if completed.returncode == 0:
+            try:
+                return _parse_twitter_posts(completed.stdout, source="twitter")
+            except (ValueError, TypeError) as exc:
+                twitter_failure = str(exc)
+        else:
+            twitter_failure = completed.stderr.strip() or "exited with status %s" % completed.returncode
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        twitter_failure = str(exc)
+
+    opencli_query = "%s since:%s" % (query, since) if query else "since:%s" % since
+    opencli_command = [
+        "opencli",
+        "twitter",
+        "search",
+        opencli_query,
+        "--product",
+        "live",
+        "--limit",
+        "30",
+        "-f",
+        "json",
+    ]
+    try:
+        fallback = _run_twitter_opencli(opencli_command, timeout, _external_command_env())
+        if fallback.returncode == 0:
+            return _parse_twitter_posts(fallback.stdout, source="opencli")
+        opencli_failure = fallback.stderr.strip() or "exited with status %s" % fallback.returncode
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        opencli_failure = str(exc)
+    raise RuntimeError("twitter-cli: %s; OpenCLI: %s" % (twitter_failure, opencli_failure))
+
+
 def _reddit_search_posts(provider: Dict[str, Any], timeout: int) -> List[Dict[str, Any]]:
     command = [
         "opencli",
@@ -1364,43 +1462,11 @@ def check_reddit(provider: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
 def check_twitter_discovery(provider: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
     result = _base_result(provider)
     since = (date.today() - timedelta(days=SOCIAL_LOOKBACK_DAYS)).isoformat()
-    command = [
-        "twitter",
-        "search",
-        "--type",
-        "latest",
-        "--since",
-        since,
-        "--max",
-        "30",
-        "--json",
-        provider["twitter_query"],
-    ]
     try:
-        completed = subprocess.run(
-            command,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-            env=_external_command_env(),
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        posts = _search_twitter(provider["twitter_query"], since, timeout)
+    except RuntimeError as exc:
         result["status"] = "unreachable"
         result["reason"] = "Twitter/X discovery failed: %s" % exc
-        return result
-    if completed.returncode != 0:
-        result["status"] = "unreachable"
-        result["reason"] = "Twitter/X discovery failed: %s" % completed.stderr.strip()
-        return result
-    try:
-        payload = json.loads(completed.stdout)
-        posts = payload.get("data", [])
-        if not isinstance(posts, list):
-            raise ValueError("Twitter/X response has no post list")
-    except (ValueError, TypeError, AttributeError):
-        result["status"] = "unknown"
-        result["reason"] = "Twitter/X discovery returned an unreadable response"
         return result
 
     result["posts"] = filter_discovery_posts(posts, source="x")
