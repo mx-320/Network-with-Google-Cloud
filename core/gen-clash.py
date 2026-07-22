@@ -56,6 +56,7 @@ if CDN_ONLY and not cdn_on:
 
 WARP_ENABLE = env.get("WARP_ENABLE", "false") == "true"
 WARP_REALITY_PORT = env.get("WARP_REALITY_PORT", "").strip()
+PRIVACY_MODE = env.get("PRIVACY_MODE", "true") == "true"
 if WARP_ENABLE and CDN_ONLY:
     sys.exit("ERROR: WARP_ENABLE=true 不能与 CDN_ONLY=true 同时使用（会重新暴露 VPS 入口）")
 
@@ -242,18 +243,24 @@ skip-proxy:
 
 tun:
   enable: true
-  stack: system
+  stack: mixed
   mtu: 1280
   auto-route: true
   auto-detect-interface: true
+  strict-route: true
   dns-hijack:
     - "any:53"
+    - "tcp://any:53"
 
 dns:
   enable: true
   listen: 127.0.0.1:1053
+  ipv6: false
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
+  # Mihomo 与 Stash 分别使用 respect-rules / follow-rule。
+  respect-rules: true
+  follow-rule: true
   fake-ip-filter:
     - "*.lan"
     - "*.local"
@@ -263,21 +270,20 @@ dns:
     - "time.*.com"
     - "ntp.*.com"
     - "*.ntp.org"
-    - "stun.*"
     - "+.msftconnecttest.com"
     - "+.msftncsi.com"
     - "localhost.ptlogin2.qq.com"
-  nameserver:
+  default-nameserver:
+    - 223.5.5.5
+    - 1.1.1.1
+  # 仅用于代理节点域名的 bootstrap，避免 DNS 经代理时递归依赖。
+  proxy-server-nameserver:
     - https://223.5.5.5/dns-query
     - https://1.12.12.12/dns-query
-  fallback:
+  # 业务 DNS 按代理规则出站；IP 形式避免再次解析 DoH 主机名。
+  nameserver:
     - https://1.1.1.1/dns-query
     - https://8.8.8.8/dns-query
-  fallback-filter:
-    geoip: true
-    geoip-code: CN
-    ipcidr:
-      - 240.0.0.0/4
 
 proxies:
 {REALITY_PROXY}{HY2_PROXY}{ANYTLS_PROXY}
@@ -291,6 +297,12 @@ proxy-groups:
       - "⚡ 自动测速"
       - "🔧 手动选择"{CDN_REF}
       - DIRECT
+
+  # AI 固定使用 Xray IPv4 出口；节点故障时失败关闭，不切换到双栈 HY2/AnyTLS。
+  - name: "🤖 AI 隐私出口"
+    type: select
+    proxies:
+      - "{AI_PROXY}"
 
   - name: "🛟 自动故障切换"
     type: fallback
@@ -467,8 +479,9 @@ rules:
   # --- [P0] 规则更新 / GitHub raw 走代理，避免大陆网络下规则集刷新失败 ---
   - DOMAIN-SUFFIX,raw.githubusercontent.com,🌐 代理流量
 
-  # --- [P1] AI / Google 服务优先走代理，避免被国内/Apple/广告规则抢先命中 ---
-  - RULE-SET,ai,🌐 代理流量
+  # --- [P1] STUN 统一代理；AI 固定到 IPv4 Xray 出口，避免 Web/UDP 出口漂移 ---
+  - DOMAIN-KEYWORD,stun,🌐 代理流量
+  - RULE-SET,ai,🤖 AI 隐私出口
   - RULE-SET,google,🌐 代理流量
 
   # --- [P2] iOS / Apple 海外能力：Siri 与 iCloud Private Relay 相关域名走代理 ---
@@ -519,13 +532,13 @@ rules:
   - RULE-SET,telegram-ip,🌐 代理流量,no-resolve
   - RULE-SET,tiktok,🌐 代理流量
 
-  # --- [P8] 国内直连 ---
+  # --- [P8] 内网始终直连；公开 CN 流量由 PRIVACY_MODE 决定 ---
   - RULE-SET,private,DIRECT
   - RULE-SET,private-ip,DIRECT,no-resolve
-  - RULE-SET,cn,↪️ 直连流量
-  - RULE-SET,cn-ip,↪️ 直连流量,no-resolve
+  - RULE-SET,cn,{PUBLIC_CN_POLICY}
+  - RULE-SET,cn-ip,{PUBLIC_CN_POLICY},no-resolve
   - GEOIP,LAN,DIRECT,no-resolve
-  - GEOIP,CN,↪️ 直连流量,no-resolve
+  - GEOIP,CN,{PUBLIC_CN_POLICY},no-resolve
 
   # --- [P9] 兜底 ---
   - MATCH,🎯 兜底策略
@@ -554,6 +567,7 @@ for dev in devices:
     warp_proxy = warp_reality_proxy_block(dev_warp_uuid)
     direct_nodes = [] if CDN_ONLY else ["US-Reality", "US-HY2", "US-AnyTLS"]
     warp_nodes = ["US-Reality-WARP"] if WARP_ENABLE else []
+    ai_proxy = "US-CDN" if CDN_ONLY else "US-Reality"
     fallback_nodes = direct_nodes[:1]
     if cdn_on:
         fallback_nodes.append("US-CDN")
@@ -577,6 +591,8 @@ for dev in devices:
         WARP_PROXY=warp_proxy,
         CDN_PROXY=cdn_proxy_block(dev_cdn_uuid),
         CDN_REF=CDN_REF,
+        AI_PROXY=ai_proxy,
+        PUBLIC_CN_POLICY="🌐 代理流量" if PRIVACY_MODE else "↪️ 直连流量",
         FALLBACK_PROXIES=node_ref_block(fallback_nodes),
         AUTO_PROXIES=node_ref_block(auto_nodes),
         MANUAL_PROXIES=node_ref_block(all_nodes),

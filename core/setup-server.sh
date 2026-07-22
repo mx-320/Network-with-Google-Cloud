@@ -81,6 +81,13 @@ WARP_PACKAGES=""
 [ "$WARP_ENABLE" = "true" ] && WARP_PACKAGES="gnupg"
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl unzip xz-utils openssl $WARP_PACKAGES
 
+# Fixed /tmp names can be owned by a different gcloud SSH user after an
+# interrupted deployment. Remove only this installer's known artifacts before
+# downloading so a later profile rebuild cannot fail with curl exit 23.
+sudo rm -f /tmp/xray.zip /tmp/hysteria /tmp/anytls.zip \
+  /tmp/cloudflared /tmp/cloudflare-warp-archive-keyring.gpg /tmp/hy2.key
+sudo rm -rf /tmp/anytls-extract
+
 ARCH="$(uname -m)"
 
 echo "=== [3/8] Installing Xray ==="
@@ -293,11 +300,11 @@ if [ -n "$CDN_INBOUND" ]; then
 fi
 [ -n "$XRAY_INBOUNDS" ] || { echo "没有可用的 Xray 入站" >&2; exit 1; }
 
-XRAY_OUTBOUNDS='{"protocol":"freedom"}'
+XRAY_OUTBOUNDS='{"protocol":"freedom","settings":{"domainStrategy":"UseIPv4"}}'
 XRAY_ROUTING=""
 if [ "$WARP_ENABLE" = "true" ]; then
   XRAY_OUTBOUNDS="${XRAY_OUTBOUNDS},
-    {\"tag\": \"warp-outbound\", \"protocol\": \"freedom\", \"settings\": {\"domainStrategy\": \"UseIPv6v4\"}, \"proxySettings\": {\"tag\": \"warp-socks\"}},
+    {\"tag\": \"warp-outbound\", \"protocol\": \"freedom\", \"settings\": {\"domainStrategy\": \"UseIPv4\"}, \"proxySettings\": {\"tag\": \"warp-socks\"}},
     {\"tag\": \"warp-socks\", \"protocol\": \"socks\", \"settings\": {\"servers\": [{\"address\": \"127.0.0.1\", \"port\": ${WARP_SOCKS_PORT}}]}}"
   XRAY_ROUTING=',
   "routing": {

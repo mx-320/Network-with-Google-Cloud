@@ -74,6 +74,37 @@ class GenerateClashConfigTest(unittest.TestCase):
             self.assertIn('name: "🛟 自动故障切换"', mac)
             self.assertIn("type: fallback", mac)
             self.assertIn('      - "US-Reality"', mac)
+            self.assertIn("  stack: mixed", mac)
+            self.assertIn("  strict-route: true", mac)
+            self.assertIn('    - "tcp://any:53"', mac)
+            self.assertIn("  ipv6: false\n  enhanced-mode: fake-ip", mac)
+            self.assertIn("  respect-rules: true", mac)
+            self.assertIn("  follow-rule: true", mac)
+            self.assertIn("  proxy-server-nameserver:", mac)
+            self.assertIn("https://1.1.1.1/dns-query", mac)
+            self.assertNotIn('    - "stun.*"', mac)
+            self.assertIn('name: "🤖 AI 隐私出口"', mac)
+            ai_group = mac.split('name: "🤖 AI 隐私出口"', 1)[1].split(
+                'name: "🛟 自动故障切换"', 1
+            )[0]
+            self.assertIn('      - "US-Reality"', ai_group)
+            self.assertNotIn('      - "US-HY2"', ai_group)
+            self.assertIn("  - RULE-SET,ai,🤖 AI 隐私出口", mac)
+            self.assertIn("  - DOMAIN-KEYWORD,stun,🌐 代理流量", mac)
+            self.assertIn("  - RULE-SET,cn,🌐 代理流量", mac)
+            self.assertIn("  - RULE-SET,cn-ip,🌐 代理流量,no-resolve", mac)
+            self.assertIn("  - GEOIP,CN,🌐 代理流量,no-resolve", mac)
+
+            with (root / "deploy.conf").open("a") as conf:
+                conf.write("PRIVACY_MODE=false\n")
+            split_result = subprocess.run(
+                [sys.executable, str(GENERATOR)], env=env, text=True,
+                capture_output=True, check=False,
+            )
+            self.assertEqual(split_result.returncode, 0, split_result.stderr)
+            split_config = mac_path.read_text()
+            self.assertIn("  - RULE-SET,cn,↪️ 直连流量", split_config)
+            self.assertIn("  - GEOIP,CN,↪️ 直连流量,no-resolve", split_config)
 
     def test_cdn_only_config_omits_direct_ip_nodes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -109,6 +140,10 @@ class GenerateClashConfigTest(unittest.TestCase):
             self.assertNotIn('name: "US-HY2"', config)
             self.assertNotIn('name: "US-AnyTLS"', config)
             self.assertNotIn("203.0.113.10", config)
+            ai_group = config.split('name: "🤖 AI 隐私出口"', 1)[1].split(
+                'name: "🛟 自动故障切换"', 1
+            )[0]
+            self.assertIn('      - "US-CDN"', ai_group)
 
     def test_warp_reality_node_is_auto_tested_but_not_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
