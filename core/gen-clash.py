@@ -298,11 +298,14 @@ proxy-groups:
       - "🔧 手动选择"{CDN_REF}
       - DIRECT
 
-  # AI 固定使用 Xray IPv4 出口；节点故障时失败关闭，不切换到双栈 HY2/AnyTLS。
+  # AI 与 STUN 只使用共享 Xray IPv4 出口；Reality 失败时可经 CDN 进入同一 Xray。
   - name: "🤖 AI 隐私出口"
-    type: select
+    type: fallback
+    lazy: true
+    url: https://www.gstatic.com/generate_204
+    interval: 300
     proxies:
-      - "{AI_PROXY}"
+{AI_PROXIES}
 
   - name: "🛟 自动故障切换"
     type: fallback
@@ -342,6 +345,12 @@ proxy-groups:
       - DIRECT
       - "🚀 代理策略"
       - "🔧 手动选择"
+
+  # PRIVACY_MODE 只决定默认顺序；可在客户端随时切换 CN 流量出口。
+  - name: "🇨🇳 国内流量"
+    type: select
+    proxies:
+{CN_POLICY_OPTIONS}
 
   - name: "🛑 屏蔽流量"
     type: select
@@ -479,8 +488,8 @@ rules:
   # --- [P0] 规则更新 / GitHub raw 走代理，避免大陆网络下规则集刷新失败 ---
   - DOMAIN-SUFFIX,raw.githubusercontent.com,🌐 代理流量
 
-  # --- [P1] STUN 统一代理；AI 固定到 IPv4 Xray 出口，避免 Web/UDP 出口漂移 ---
-  - DOMAIN-KEYWORD,stun,🌐 代理流量
+  # --- [P1] STUN 与 AI 固定到同一个 IPv4 Xray 出口，避免 Web/UDP 出口漂移 ---
+  - DOMAIN-KEYWORD,stun,🤖 AI 隐私出口
   - RULE-SET,ai,🤖 AI 隐私出口
   - RULE-SET,google,🌐 代理流量
 
@@ -532,13 +541,13 @@ rules:
   - RULE-SET,telegram-ip,🌐 代理流量,no-resolve
   - RULE-SET,tiktok,🌐 代理流量
 
-  # --- [P8] 内网始终直连；公开 CN 流量由 PRIVACY_MODE 决定 ---
+  # --- [P8] 内网始终直连；公开 CN 流量可在客户端手动切换 ---
   - RULE-SET,private,DIRECT
   - RULE-SET,private-ip,DIRECT,no-resolve
-  - RULE-SET,cn,{PUBLIC_CN_POLICY}
-  - RULE-SET,cn-ip,{PUBLIC_CN_POLICY},no-resolve
+  - RULE-SET,cn,🇨🇳 国内流量
+  - RULE-SET,cn-ip,🇨🇳 国内流量,no-resolve
   - GEOIP,LAN,DIRECT,no-resolve
-  - GEOIP,CN,{PUBLIC_CN_POLICY},no-resolve
+  - GEOIP,CN,🇨🇳 国内流量,no-resolve
 
   # --- [P9] 兜底 ---
   - MATCH,🎯 兜底策略
@@ -567,12 +576,19 @@ for dev in devices:
     warp_proxy = warp_reality_proxy_block(dev_warp_uuid)
     direct_nodes = [] if CDN_ONLY else ["US-Reality", "US-HY2", "US-AnyTLS"]
     warp_nodes = ["US-Reality-WARP"] if WARP_ENABLE else []
-    ai_proxy = "US-CDN" if CDN_ONLY else "US-Reality"
+    ai_nodes = ["US-CDN"] if CDN_ONLY else ["US-Reality"]
+    if cdn_on and not CDN_ONLY:
+        ai_nodes.append("US-CDN")
+    cn_policy_options = (
+        '      - "🌐 代理流量"\n      - DIRECT'
+        if PRIVACY_MODE
+        else '      - DIRECT\n      - "🌐 代理流量"'
+    )
     fallback_nodes = direct_nodes[:1]
     if cdn_on:
         fallback_nodes.append("US-CDN")
     fallback_nodes.extend(direct_nodes[1:])
-    auto_nodes = fallback_nodes + warp_nodes
+    auto_nodes = fallback_nodes
     all_nodes = (["US-CDN"] if cdn_on else []) + direct_nodes + warp_nodes
     if not fallback_nodes:
         sys.exit("ERROR: 没有可用的代理节点")
@@ -591,8 +607,8 @@ for dev in devices:
         WARP_PROXY=warp_proxy,
         CDN_PROXY=cdn_proxy_block(dev_cdn_uuid),
         CDN_REF=CDN_REF,
-        AI_PROXY=ai_proxy,
-        PUBLIC_CN_POLICY="🌐 代理流量" if PRIVACY_MODE else "↪️ 直连流量",
+        AI_PROXIES=node_ref_block(ai_nodes),
+        CN_POLICY_OPTIONS=cn_policy_options,
         FALLBACK_PROXIES=node_ref_block(fallback_nodes),
         AUTO_PROXIES=node_ref_block(auto_nodes),
         MANUAL_PROXIES=node_ref_block(all_nodes),

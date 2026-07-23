@@ -48,8 +48,8 @@ HY2_DOWN=
 # 要生成客户端配置的设备名（空格分隔，可自由增删）
 DEVICES="mac iphone"
 
-# 隐私模式：公开 CN 域名/IP 与 STUN 均走代理；原有 Apple/Spotify 分流保持不变。
-# false 恢复传统国内直连分流；会让同一网页同时观察到本地与代理出口。
+# 隐私模式：决定「🇨🇳 国内流量」组的首次默认选项；true 默认代理，false 默认直连。
+# 客户端可随时手动切换该组；局域网与原有 Apple/Spotify 分流保持不变。
 PRIVACY_MODE=true
 
 # ── Cloudflare CDN 套娃出口（可选）──

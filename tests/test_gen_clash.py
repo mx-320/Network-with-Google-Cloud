@@ -87,13 +87,22 @@ class GenerateClashConfigTest(unittest.TestCase):
             ai_group = mac.split('name: "🤖 AI 隐私出口"', 1)[1].split(
                 'name: "🛟 自动故障切换"', 1
             )[0]
+            self.assertIn("    type: fallback", ai_group)
             self.assertIn('      - "US-Reality"', ai_group)
             self.assertNotIn('      - "US-HY2"', ai_group)
             self.assertIn("  - RULE-SET,ai,🤖 AI 隐私出口", mac)
-            self.assertIn("  - DOMAIN-KEYWORD,stun,🌐 代理流量", mac)
-            self.assertIn("  - RULE-SET,cn,🌐 代理流量", mac)
-            self.assertIn("  - RULE-SET,cn-ip,🌐 代理流量,no-resolve", mac)
-            self.assertIn("  - GEOIP,CN,🌐 代理流量,no-resolve", mac)
+            self.assertIn("  - DOMAIN-KEYWORD,stun,🤖 AI 隐私出口", mac)
+            cn_group = mac.split('name: "🇨🇳 国内流量"', 1)[1].split(
+                'name: "🛑 屏蔽流量"', 1
+            )[0]
+            self.assertIn("    type: select", cn_group)
+            self.assertLess(
+                cn_group.index('      - "🌐 代理流量"'),
+                cn_group.index("      - DIRECT"),
+            )
+            self.assertIn("  - RULE-SET,cn,🇨🇳 国内流量", mac)
+            self.assertIn("  - RULE-SET,cn-ip,🇨🇳 国内流量,no-resolve", mac)
+            self.assertIn("  - GEOIP,CN,🇨🇳 国内流量,no-resolve", mac)
 
             with (root / "deploy.conf").open("a") as conf:
                 conf.write("PRIVACY_MODE=false\n")
@@ -103,8 +112,15 @@ class GenerateClashConfigTest(unittest.TestCase):
             )
             self.assertEqual(split_result.returncode, 0, split_result.stderr)
             split_config = mac_path.read_text()
-            self.assertIn("  - RULE-SET,cn,↪️ 直连流量", split_config)
-            self.assertIn("  - GEOIP,CN,↪️ 直连流量,no-resolve", split_config)
+            split_cn_group = split_config.split('name: "🇨🇳 国内流量"', 1)[1].split(
+                'name: "🛑 屏蔽流量"', 1
+            )[0]
+            self.assertLess(
+                split_cn_group.index("      - DIRECT"),
+                split_cn_group.index('      - "🌐 代理流量"'),
+            )
+            self.assertIn("  - RULE-SET,cn,🇨🇳 国内流量", split_config)
+            self.assertIn("  - GEOIP,CN,🇨🇳 国内流量,no-resolve", split_config)
 
     def test_cdn_only_config_omits_direct_ip_nodes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -143,9 +159,53 @@ class GenerateClashConfigTest(unittest.TestCase):
             ai_group = config.split('name: "🤖 AI 隐私出口"', 1)[1].split(
                 'name: "🛟 自动故障切换"', 1
             )[0]
+            self.assertIn("    type: fallback", ai_group)
             self.assertIn('      - "US-CDN"', ai_group)
+            self.assertNotIn('      - "US-Reality"', ai_group)
+            self.assertNotIn('      - "US-HY2"', ai_group)
+            self.assertNotIn('      - "US-AnyTLS"', ai_group)
 
-    def test_warp_reality_node_is_auto_tested_but_not_fallback(self):
+    def test_ai_privacy_fallback_prefers_reality_then_cdn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "deploy.conf").write_text(
+                "REALITY_PORT=443\nREALITY_TARGET=1.1.1.1:443\nREALITY_SNI=\n"
+                "DEVICES=mac\nCDN_ENABLE=true\nCDN_ONLY=false\n"
+                "CDN_HOSTNAME=cdn.example.com\n"
+            )
+            (root / ".secrets.env").write_text(
+                "STATIC_IP=203.0.113.10\nREALITY_PUBLIC=test-public-key\n"
+                "REALITY_SHORTID=0123456789abcdef\nHY2_PORT=31000\n"
+                "ANYTLS_PORT=21000\nANYTLS_PASS=test-anytls-pass\n"
+                "REALITY_UUID_mac=00000000-0000-4000-8000-000000000001\n"
+                "HY2_PASS_mac=test-hy2-mac\nCDN_WS_PATH=private-path\n"
+                "CDN_UUID_mac=00000000-0000-4000-8000-000000000003\n"
+            )
+            env = os.environ.copy()
+            env["NETWORK_NODE_ROOT"] = str(root)
+            env["NETWORK_NODE_STATE_DIR"] = str(root)
+            env["NETWORK_NODE_PROFILE"] = "test"
+            result = subprocess.run(
+                [sys.executable, str(GENERATOR)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            config = (root / "clash-configs" / "test-mac.yaml").read_text()
+            ai_group = config.split('name: "🤖 AI 隐私出口"', 1)[1].split(
+                'name: "🛟 自动故障切换"', 1
+            )[0]
+            self.assertIn("    type: fallback", ai_group)
+            reality_index = ai_group.index('      - "US-Reality"')
+            cdn_index = ai_group.index('      - "US-CDN"')
+            self.assertLess(reality_index, cdn_index)
+            self.assertNotIn('      - "US-HY2"', ai_group)
+            self.assertNotIn('      - "US-AnyTLS"', ai_group)
+            self.assertNotIn('      - "US-Reality-WARP"', ai_group)
+
+    def test_warp_reality_node_is_manual_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
             (root / "deploy.conf").write_text(
@@ -185,7 +245,11 @@ class GenerateClashConfigTest(unittest.TestCase):
             auto = config.split('name: "⚡ 自动测速"', 1)[1].split(
                 'name: "🔧 手动选择"', 1
             )[0]
-            self.assertIn('      - "US-Reality-WARP"', auto)
+            self.assertNotIn('      - "US-Reality-WARP"', auto)
+            manual = config.split('name: "🔧 手动选择"', 1)[1].split(
+                'name: "🌐 代理流量"', 1
+            )[0]
+            self.assertIn('      - "US-Reality-WARP"', manual)
 
     def test_warp_is_rejected_in_cdn_only_mode(self):
         with tempfile.TemporaryDirectory() as tmp:
