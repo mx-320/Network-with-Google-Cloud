@@ -122,6 +122,36 @@ PROVIDERS: List[Dict[str, Any]] = [
         "focus": True,
     },
     {
+        "id": "yt-net-us-lax-a-22",
+        "provider": "YT.NET",
+        "region": "Los Angeles, US",
+        "kind": "yt_net_markdown",
+        "url": "https://cloud.yt.net/deploy/us-lax",
+        "fetch_url": "https://r.jina.ai/https://cloud.yt.net/deploy/us-lax",
+        "plan_name": "US.LAX.A",
+        "target_price": 22.0,
+        "target_currency": "CNY",
+        "target_period": "month",
+        "priority": "value",
+        "network": "Los Angeles premium route; China optimization unconfirmed",
+        "focus": True,
+    },
+    {
+        "id": "yt-net-us-lax-b-35",
+        "provider": "YT.NET",
+        "region": "Los Angeles, US",
+        "kind": "yt_net_markdown",
+        "url": "https://cloud.yt.net/deploy/us-lax",
+        "fetch_url": "https://r.jina.ai/https://cloud.yt.net/deploy/us-lax",
+        "plan_name": "US.LAX.B",
+        "target_price": 35.0,
+        "target_currency": "CNY",
+        "target_period": "month",
+        "priority": "value",
+        "network": "Los Angeles premium route; China optimization unconfirmed",
+        "focus": True,
+    },
+    {
         "id": "novixlink-ntt-isp-vps",
         "provider": "NovixLink",
         "region": "Los Angeles, US",
@@ -141,6 +171,20 @@ PROVIDERS: List[Dict[str, Any]] = [
         "fetch_url": "https://r.jina.ai/http://novixlink.com/store/us-lacup-isp",
         "priority": "cn2",
         "network": "AS9929 / CMIN2 three-network optimized, GTT dual residential ISP",
+        "focus": True,
+    },
+    {
+        "id": "zorocloud-jp-titan-plus-138",
+        "provider": "ZoroCloud",
+        "region": "Japan",
+        "kind": "zorocloud_html",
+        "url": "https://my.zorocloud.com/store/jpisp",
+        "plan_name": "JP-Titan-Plus",
+        "target_price": 138.0,
+        "target_currency": "CNY",
+        "target_period": "month",
+        "priority": "value",
+        "network": "Japan residential dual ISP; provider claim",
         "focus": True,
     },
     {
@@ -440,6 +484,8 @@ _COUNTED_PLAN = re.compile(
 _NOVIXLINK_PLAN = re.compile(r"(?m)^###\s+(?P<plan>LAX-[^\n]+)\s*$")
 _NOVIXLINK_CAD_PRICE = re.compile(r"\$\s*(?P<amount>\d+(?:\.\d+)?)\s*CAD\b", re.IGNORECASE)
 _NOVIXLINK_USD_PRICE = re.compile(r"~\s*\$\s*(?P<amount>\d+(?:\.\d+)?)\s*USD\b", re.IGNORECASE)
+_YT_NET_PLAN = re.compile(r"(?m)^###\s+(?P<plan>US\.LAX\.[A-Z])\s*$")
+_YT_NET_MONTHLY_PRICE = re.compile(r"¥\s*(?P<amount>\d+(?:\.\d+)?)\s*/\s*月")
 
 _TWITTER_POSITIVE = ("coupon", "sale", "discount", "promo", "restock", "in stock", "available", "优惠", "折扣", "优惠码", "补货", "有货", "上架", "开售")
 _TWITTER_NEGATIVE = ("out of stock", "sold out", "unavailable", "无货", "缺货", "断货", "售罄", "抢空")
@@ -821,6 +867,59 @@ def check_novixlink_markdown(provider: Dict[str, Any], status_code: int, text: s
     return result
 
 
+def check_zorocloud_html(provider: Dict[str, Any], status_code: int, text: str) -> Dict[str, Any]:
+    result = _base_result(provider)
+    if status_code in (401, 403, 429):
+        result["status"] = "blocked"
+        result["reason"] = "provider anti-bot or rate-limit response (HTTP %s)" % status_code
+        return result
+    if status_code >= 400:
+        result["status"] = "unreachable"
+        result["reason"] = "HTTP %s" % status_code
+        return result
+
+    target_name = provider["plan_name"]
+    target_price = float(provider["target_price"])
+    headings = list(re.finditer(r'<h3\b[^>]*class=["\']package-title["\'][^>]*>\s*([^<]+?)\s*</h3>', text, re.IGNORECASE))
+    target_heading = next((heading for heading in headings if heading.group(1).strip() == target_name), None)
+    if target_heading is None:
+        result["reason"] = "official ZoroCloud page has no matching target plan"
+        return result
+
+    section_start = text.rfind('<div class="package', 0, target_heading.start())
+    next_column = text.find('<div class="col">', target_heading.end())
+    section = text[section_start : next_column if next_column != -1 else len(text)]
+    price_match = re.search(r"¥\s*(?P<amount>\d+(?:\.\d+)?)\s*CNY", section, re.IGNORECASE)
+    count_match = re.search(r"(?P<count>\d+)\s*可用", section)
+    if not price_match or not count_match or float(price_match.group("amount")) != target_price:
+        result["reason"] = "official ZoroCloud page has no matching target price or inventory count"
+        return result
+
+    count = int(count_match.group("count"))
+    button_match = re.search(r"<a\b(?P<attrs>[^>]*)>\s*立即购买\s*</a>", section, re.IGNORECASE | re.DOTALL)
+    button_disabled = bool(button_match and re.search(r"\bdisabled\b", button_match.group("attrs"), re.IGNORECASE))
+    available = count > 0 and not button_disabled
+    result["plans"] = [
+        {
+            "plan": target_name,
+            "product_url": provider["url"],
+            "price": {
+                "amount": target_price,
+                "currency": provider.get("target_currency", "CNY"),
+                "period": provider.get("target_period", "month"),
+                "monthly_equivalent": target_price,
+                "price_eligible": None,
+            },
+            "count": count,
+            "available": available,
+        }
+    ]
+    result["status"] = "available" if available else "out_of_stock"
+    result["confidence"] = "high"
+    result["reason"] = "official ZoroCloud page exposes target plan price, inventory count, and order state"
+    return result
+
+
 def check_colocrossing_markdown(provider: Dict[str, Any], status_code: int, text: str) -> Dict[str, Any]:
     result = _base_result(provider)
     if status_code in (401, 403, 429):
@@ -880,6 +979,58 @@ def check_colocrossing_markdown(provider: Dict[str, Any], status_code: int, text
         result["status"] = "catalog_only"
         result["confidence"] = "low"
         result["reason"] = "official ColoCrossing page exposes the target plan and price but no configuration action"
+    return result
+
+
+def check_yt_net_markdown(provider: Dict[str, Any], status_code: int, text: str) -> Dict[str, Any]:
+    result = _base_result(provider)
+    if status_code in (401, 403, 429):
+        result["status"] = "blocked"
+        result["reason"] = "provider anti-bot or rate-limit response (HTTP %s)" % status_code
+        return result
+    if status_code >= 400:
+        result["status"] = "unreachable"
+        result["reason"] = "HTTP %s" % status_code
+        return result
+
+    target_name = provider["plan_name"]
+    target_price = float(provider["target_price"])
+    headings = list(_YT_NET_PLAN.finditer(text))
+    target_heading = next((heading for heading in headings if heading.group("plan") == target_name), None)
+    if target_heading is None:
+        result["reason"] = "official YT.NET deployment page has no matching target plan"
+        return result
+
+    heading_index = headings.index(target_heading)
+    section_end = headings[heading_index + 1].start() if heading_index + 1 < len(headings) else len(text)
+    section = text[target_heading.end() : section_end]
+    prices = [float(match.group("amount")) for match in _YT_NET_MONTHLY_PRICE.finditer(section)]
+    if target_price not in prices:
+        result["reason"] = "official YT.NET deployment page has no matching target CNY monthly price"
+        return result
+
+    sold_out = bool(re.search(r"缺货|售罄|out of stock|sold out|unavailable", section, re.IGNORECASE))
+    result["plans"] = [
+        {
+            "plan": target_name,
+            "product_url": provider["url"],
+            "price": {
+                "amount": target_price,
+                "currency": provider.get("target_currency", "CNY"),
+                "period": provider.get("target_period", "month"),
+                "monthly_equivalent": target_price,
+                "price_eligible": None,
+            },
+            "available": not sold_out,
+        }
+    ]
+    result["status"] = "out_of_stock" if sold_out else "available"
+    result["confidence"] = "medium"
+    result["reason"] = (
+        "official YT.NET deployment page marks the target plan sold out"
+        if sold_out
+        else "official YT.NET deployment page exposes the target CNY price without a sold-out label; no numeric inventory count"
+    )
     return result
 
 
@@ -1724,8 +1875,12 @@ def check_provider(provider: Dict[str, Any], timeout: int = 20, social_timeout: 
         result = check_dedione_html(provider, status_code, text)
     elif provider["kind"] == "novixlink_markdown":
         result = check_novixlink_markdown(provider, status_code, text)
+    elif provider["kind"] == "zorocloud_html":
+        result = check_zorocloud_html(provider, status_code, text)
     elif provider["kind"] == "colocrossing_markdown":
         result = check_colocrossing_markdown(provider, status_code, text)
+    elif provider["kind"] == "yt_net_markdown":
+        result = check_yt_net_markdown(provider, status_code, text)
     else:
         result = check_html(provider, status_code, text)
     result["http_status"] = status_code
@@ -1808,9 +1963,15 @@ def monitorability(cn2_only: bool = False, all_providers: bool = False) -> List[
         elif kind == "novixlink_markdown":
             level = "stock"
             reason = "official NovixLink page exposes per-plan price and order or sold-out state"
+        elif kind == "zorocloud_html":
+            level = "stock"
+            reason = "official ZoroCloud page exposes target plan price, inventory count, and order state"
         elif kind == "colocrossing_markdown":
             level = "order_signal"
             reason = "official configuration page exposes the target monthly price and configure action, but not inventory counts or per-location stock"
+        elif kind == "yt_net_markdown":
+            level = "order_signal"
+            reason = "official YT.NET deployment page exposes the target CNY price and sold-out label, but not a numeric inventory count"
         elif kind == "dedione_html":
             level = "order_signal"
             reason = "official DediOne product card exposes the target price and order action, but not a numeric inventory count"

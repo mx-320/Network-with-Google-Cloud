@@ -353,6 +353,39 @@ class GenerateClashConfigTest(unittest.TestCase):
             self.assertFalse(stale.exists())
             self.assertTrue((clients / "dmit-mac.yaml").exists())
 
+    def test_custom_client_file_prefix_does_not_change_profile_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            clients = root / "clash-configs"
+            clients.mkdir()
+            stale = clients / "cstonecloud-old.yaml"
+            stale.write_text("stale: true\n")
+            unrelated = clients / "gcloud-old.yaml"
+            unrelated.write_text("preserve: true\n")
+            (root / "deploy.conf").write_text(
+                "REALITY_PORT=443\nREALITY_SNI=\nDEVICES=mac\n"
+                "CDN_ENABLE=false\nCLIENT_FILE_PREFIX=cstonecloud\n"
+            )
+            (root / ".secrets.env").write_text(
+                "STATIC_IP=203.0.113.10\nREALITY_PUBLIC=test-public-key\n"
+                "REALITY_SHORTID=0123456789abcdef\nHY2_PORT=31000\n"
+                "ANYTLS_PORT=21000\nANYTLS_PASS=test-anytls-pass\n"
+                "REALITY_UUID_mac=00000000-0000-4000-8000-000000000001\n"
+                "HY2_PASS_mac=test-hy2-mac\n"
+            )
+            env = os.environ.copy()
+            env["NETWORK_NODE_ROOT"] = str(root)
+            env["NETWORK_NODE_STATE_DIR"] = str(root)
+            env["NETWORK_NODE_PROFILE"] = "cstonecloud-cuii-a"
+            result = subprocess.run(
+                [sys.executable, str(GENERATOR)], env=env, text=True,
+                capture_output=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(stale.exists())
+            self.assertTrue(unrelated.exists())
+            self.assertTrue((clients / "cstonecloud-mac.yaml").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

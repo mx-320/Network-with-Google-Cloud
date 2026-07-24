@@ -40,6 +40,7 @@ def load_kv(path):
 env = {}
 env.update(load_kv(STATE_DIR / "deploy.conf"))
 env.update(load_kv(STATE_DIR / ".secrets.env"))
+FILE_PREFIX = env.get("CLIENT_FILE_PREFIX", "").strip() or PROFILE
 
 devices = env.get("DEVICES", "mac iphone").split()
 
@@ -560,7 +561,7 @@ rules:
 
 OUT_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
 OUT_DIR.chmod(0o700)
-stale_pattern = f"{PROFILE}-*.yaml" if PROFILE else "*.yaml"
+stale_pattern = f"{FILE_PREFIX}-*.yaml" if FILE_PREFIX else "*.yaml"
 for stale in OUT_DIR.glob(stale_pattern):
     stale.unlink()
 for dev in devices:
@@ -620,7 +621,7 @@ for dev in devices:
         ALL_PROXIES=node_ref_block(all_nodes),
         **env,
     )
-    filename = f"{PROFILE}-{dev}.yaml" if PROFILE else f"{dev}.yaml"
+    filename = f"{FILE_PREFIX}-{dev}.yaml" if FILE_PREFIX else f"{dev}.yaml"
     path = OUT_DIR / filename
     path.write_text(yaml)
     path.chmod(0o600)

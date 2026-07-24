@@ -35,6 +35,17 @@ The official matrix includes the ZgoVPS Los Angeles AMD Optimised Starter at
 special-offer page.
 It also includes DediOne `LAX.VPS.CMIN2.1C1G10G-Annual` at `$29.99/year`; the
 official product card exposes an order action but no numeric inventory count.
+YT.NET's [Los Angeles deployment page](https://cloud.yt.net/deploy/us-lax) is
+tracked as two independent CNY monthly sources: `US.LAX.A` at `¥22/month` and
+`US.LAX.B` at `¥35/month`. The monitor reads each plan card separately and uses
+the page's `缺货` label as an orderability signal; it does not claim a numeric
+inventory count or convert the CNY prices to the USD budget threshold. The
+page's `US.LAX.C` tier is not included in this monitor.
+ZoroCloud's [Japan residential BGP page](https://my.zorocloud.com/store/jpisp)
+is also tracked for the requested `JP-Titan-Plus` plan at `¥138/month`. The
+page exposes a numeric `可用` count and disabled/enabled order state; its CNY
+price is tracked as a user-requested source and is not treated as within the
+monitor's default USD value filter.
 
 LightLayer keeps its whole catalog behind an account login, so its two Los
 Angeles annual plans use the `manual` source kind: the monitor never fetches

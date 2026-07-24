@@ -18,4 +18,5 @@ __pycache__/
 .vscode/
 
 # Local Graphify analysis cache (may contain absolute paths and derived metadata)
+config/mcporter.json
 graphify-out/

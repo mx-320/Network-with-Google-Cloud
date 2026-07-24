@@ -116,6 +116,18 @@ profiles/<profile>/
 
 公共代码只应依赖环境变量和 profile 状态，不要把某台服务器的 IP、域名、Token 或 SSH 文件写进 `core/`、`providers/`、`README.md` 或测试样例。
 
+客户端文件默认使用 `<profile>-<device>.yaml` 命名。如果某台服务器需要更短的设备文件名，可在该 profile 的 `deploy.conf` 设置 `CLIENT_FILE_PREFIX`；这只改变 `clash-configs/` 下的文件前缀和旧文件清理范围，不改变 profile 状态目录，也不会让不同服务器共用凭据。
+
+### 交接时的文件边界
+
+交接或同步仓库时，只同步公共代码、测试和不含凭据的文档。以下内容始终留在本机或设备同步目录，不应进入提交、压缩包、工单或聊天：
+
+- `profiles/` 下的 `deploy.conf`、`.secrets.env` 和 `ssh/` 私钥；
+- `clash-configs/` 下的客户端 YAML；
+- 本机 MCP、浏览器或其他工具配置，例如 `config/mcporter.json`。
+
+如果部署时临时通过 `VPS_SSH_KEY=/path/to/private-key` 指定了外部私钥，交接前应将它放回对应的 `profiles/<profile>/ssh/`，并确认权限为 `600`。仓库只记录使用方式，不记录私钥路径、内容或服务器凭据。
+
 ## 常用维护动作
 
 ### 重跑同一台服务器
@@ -163,6 +175,8 @@ git ls-files profiles
 ```
 
 最后一条必须没有输出。生成的 profile、SSH 私钥、`.secrets.env` 和客户端 YAML 都不应进入提交。
+
+交接说明至少应记录：当前分支和提交、已验证的测试/语法检查、主动维护的 profile 名称，以及未同步的本地敏感状态；不要在交接文本中粘贴节点密码、UUID、Token、私钥或客户端 YAML 内容。
 
 ## Graphify 结构审计摘要
 

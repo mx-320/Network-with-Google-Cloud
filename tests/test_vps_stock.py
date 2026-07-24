@@ -27,6 +27,8 @@ from vps_stock import (  # noqa: E402
     check_html,
     check_manual,
     check_novixlink_markdown,
+    check_zorocloud_html,
+    check_yt_net_markdown,
     check_reddit,
     check_provider,
     check_twitter_discovery,
@@ -47,6 +49,81 @@ from vps_stock import (  # noqa: E402
 
 
 class VpsStockParsingTests(unittest.TestCase):
+    def test_zorocloud_tracks_jp_titan_plus_inventory(self):
+        provider = {
+            "id": "zorocloud-jp-titan-plus-138",
+            "provider": "ZoroCloud",
+            "region": "Japan",
+            "priority": "value",
+            "network": "Japan residential dual ISP; provider claim",
+            "url": "https://my.zorocloud.com/store/jpisp",
+            "plan_name": "JP-Titan-Plus",
+            "target_price": 138.0,
+            "target_currency": "CNY",
+            "target_period": "month",
+        }
+        html = """
+        <div class="package" id="product205">
+          <h3 class="package-title">JP-Titan-Plus</h3>
+          <div class="price-amount">¥138.00 CNY</div>
+          <div class="price-cycle">月缴</div>
+          <a class="btn disabled">立即购买</a>
+          <div class="package-qty">0 可用</div>
+        </div>
+        """
+        result = check_zorocloud_html(provider, 200, html)
+        self.assertEqual(result["status"], "out_of_stock")
+        self.assertEqual(result["plans"][0]["plan"], "JP-Titan-Plus")
+        self.assertEqual(result["plans"][0]["price"]["amount"], 138.0)
+        self.assertFalse(result["plans"][0]["available"])
+
+        available_html = html.replace('class="btn disabled"', 'class="btn"').replace("0 可用", "2 可用")
+        available = check_zorocloud_html(provider, 200, available_html)
+        self.assertEqual(available["status"], "available")
+        self.assertTrue(available["plans"][0]["available"])
+
+    def test_yt_net_markdown_tracks_each_lax_plan_independently(self):
+        markdown = """
+### US.LAX.A
+¥22/月
+¥28/月
+IP IPv4
+CPU 1 vCPU
+缺货
+
+### US.LAX.B
+¥35/月
+¥48/月
+IP IPv4
+CPU 2 vCPU
+"""
+        plan_a = {
+            "id": "yt-net-us-lax-a-22",
+            "provider": "YT.NET",
+            "region": "Los Angeles, US",
+            "priority": "value",
+            "network": "China optimization unconfirmed",
+            "url": "https://cloud.yt.net/deploy/us-lax",
+            "plan_name": "US.LAX.A",
+            "target_price": 22.0,
+            "target_currency": "CNY",
+            "target_period": "month",
+        }
+        plan_b = {**plan_a, "id": "yt-net-us-lax-b-35", "plan_name": "US.LAX.B", "target_price": 35.0}
+
+        result_a = check_yt_net_markdown(plan_a, 200, markdown)
+        result_b = check_yt_net_markdown(plan_b, 200, markdown)
+
+        self.assertEqual(result_a["status"], "out_of_stock")
+        self.assertEqual(result_a["plans"][0]["plan"], "US.LAX.A")
+        self.assertEqual(result_a["plans"][0]["price"]["amount"], 22.0)
+        self.assertEqual(result_a["plans"][0]["price"]["currency"], "CNY")
+        self.assertFalse(result_a["plans"][0]["available"])
+        self.assertEqual(result_b["status"], "available")
+        self.assertEqual(result_b["plans"][0]["plan"], "US.LAX.B")
+        self.assertEqual(result_b["plans"][0]["price"]["amount"], 35.0)
+        self.assertTrue(result_b["plans"][0]["available"])
+
     def test_colocrossing_config_page_parses_target_monthly_plan(self):
         provider = {
             "id": "colocrossing-cloud-vps-1gb",
@@ -346,6 +423,18 @@ Out of Stock
         self.assertEqual(sources["zgovps-lax-optimized-starter-18-quarterly"]["target_period"], "quarter")
         self.assertEqual(sources["zgovps-hkg-special-52"]["target_price"], 52.0)
         self.assertEqual(sources["zgovps-lax-special-52"]["priority"], "cn2")
+
+    def test_yt_net_lax_plans_are_separate_default_sources(self):
+        sources = {item["id"]: item for item in select_providers() if item["provider"] == "YT.NET"}
+        self.assertEqual(set(sources), {"yt-net-us-lax-a-22", "yt-net-us-lax-b-35"})
+        self.assertEqual(sources["yt-net-us-lax-a-22"]["plan_name"], "US.LAX.A")
+        self.assertEqual(sources["yt-net-us-lax-a-22"]["target_price"], 22.0)
+        self.assertEqual(sources["yt-net-us-lax-b-35"]["plan_name"], "US.LAX.B")
+        self.assertEqual(sources["yt-net-us-lax-b-35"]["target_price"], 35.0)
+
+        monitor_rows = {row["id"]: row for row in monitorability() if row["provider"] == "YT.NET"}
+        self.assertEqual(monitor_rows["yt-net-us-lax-a-22"]["level"], "order_signal")
+        self.assertEqual(monitor_rows["yt-net-us-lax-b-35"]["level"], "order_signal")
 
     def test_dedione_html_parses_target_annual_product_card(self):
         provider = {
