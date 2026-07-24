@@ -287,6 +287,9 @@ dns:
     - https://8.8.8.8/dns-query
   # 国内直连流量使用国内 DNS，避免 DIRECT 连接仍拿海外 DoH 的解析结果。
   nameserver-policy:
+    '+.cn':
+      - 223.5.5.5
+      - 119.29.29.29
     'geosite:cn':
       - 223.5.5.5
       - 119.29.29.29
@@ -550,6 +553,8 @@ rules:
   # --- [P8] 内网始终直连；公开 CN 流量可在客户端手动切换 ---
   - RULE-SET,private,DIRECT
   - RULE-SET,private-ip,DIRECT,no-resolve
+  # 部分国内产品未及时进入 geosite:cn；先按 .cn 后缀送入国内流量组。
+  - DOMAIN-SUFFIX,cn,🇨🇳 国内流量
   - RULE-SET,cn,🇨🇳 国内流量
   - RULE-SET,cn-ip,🇨🇳 国内流量,no-resolve
   - GEOIP,LAN,DIRECT,no-resolve
